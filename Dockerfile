@@ -44,7 +44,8 @@ USER fah
 # download this as needed, but I've seen mixed results depending on such.)
 ADD --chown=fah:fah https://apps.foldingathome.org/GPUs.txt /home/fah/GPUs.txt
 
-WORKDIR /home/fah
+WORKDIR "/fah"
+VOLUME ["/fah"]
 EXPOSE 7396 36330
 
-CMD FAHClient
+ENTRYPOINT ["/usr/bin/FAHClient", "--chdir", "/fah"]

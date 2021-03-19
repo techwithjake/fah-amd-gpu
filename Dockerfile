@@ -1,40 +1,50 @@
-# Folding@home AMD ROCm Container
-
+  
 FROM ubuntu:18.04
-LABEL description="Folding@home AMD ROCm Container"
 
-ARG ROCM_VER=4.0.0
+ARG AMDGPU_PRO_VERSION=20.40-1147287-ubuntu-18.04
+ARG FAH_CLIENT_VERSION=7.6.9
+ARG FAH_CLIENT_MAJOR_V=7.6
 
-RUN apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      curl \
-      libnuma-dev \
-      gnupg \
-      ca-certificates \
-    # get ROCm OpenCL runtime packages
-    && curl -sL http://repo.radeon.com/rocm/rocm.gpg.key | apt-key add - \
-    && printf "deb [arch=amd64] http://repo.radeon.com/rocm/apt/debian/ xenial main" | tee /etc/apt/sources.list.d/rocm.list \
-    && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --install-recommends \
-      rocm-dev${ROCM_VER} \
-    # next line gets past the fahclient.postinst
-    && mkdir -p /etc/fahclient && touch /etc/fahclient/config.xml \
-    # download and verify checksum
-    && curl -fsSL \
-      https://download.foldingathome.org/releases/public/release/fahclient/debian-stable-64bit/v7.6/fahclient_7.6.21_amd64.deb \
-      -o fah.deb \
-    && echo "2827f05f1c311ee6c7eca294e4ffb856c81957e8f5bfc3113a0ed27bb463b094 fah.deb" \
-      | sha256sum -c --strict - \
-    # install and cleanup
-    && DEBIAN_FRONTEND=noninteractive dpkg --install --force-depends fah.deb \
-    && rm -rf fah.deb \
-    && apt-get purge --autoremove -y curl \
-    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+ENV DEBIAN_FRONTEND noninteractive
 
-# explicitly point FAHClient to the ROCm libOpenCL
-ENV LD_LIBRARY_PATH=/opt/rocm-${ROCM_VER}/lib
+# Install prerequisite packages and nice to have tools
+RUN apt-get update && \
+    apt-get -y install --no-install-recommends wget ca-certificates apt-utils xz-utils clinfo
 
-WORKDIR "/fah"
-VOLUME ["/fah"]
+# Fetch and extract the AMDGPU userland driver, setup as a local APT repo
+RUN wget -qO- --referer=https://support.amd.com https://www2.ati.com/drivers/linux/amdgpu-pro-${AMDGPU_PRO_VERSION}.tar.xz | \
+    tar -C /opt -Jx && \
+    mv /opt/amdgpu-pro-${AMDGPU_PRO_VERSION} /opt/amdgpu-pro-repo && \
+    echo "deb [trusted=yes] file:/opt/amdgpu-pro-repo /" > /etc/apt/sources.list.d/amdgpu-pro.list && \
+    apt-get update --allow-insecure-repositories
+
+# Install legacy opencl driver. Allow again to install non-signed packages.
+RUN apt-get install -y clinfo-amdgpu-pro opencl-orca-amdgpu-pro-icd ocl-icd-libopencl1 && \
+    cd /usr/lib/x86_64-linux-gnu && ln -s libOpenCL.so.1 libOpenCL.so
+
+# Cleanup
+RUN rm -rf /etc/apt/sources.list.d/amdgpu-pro.list /opt/amdgpu-pro-repo
+
+# Fetch the F@H Client
+RUN wget -qO /tmp/fah.deb https://download.foldingathome.org/releases/public/release/fahclient/debian-stable-64bit/v${FAH_CLIENT_MAJOR_V}/fahclient_${FAH_CLIENT_VERSION}_amd64.deb
+
+# Install the F@H Client
+RUN mkdir -p /usr/share/doc/fahclient && \
+    touch /usr/share/doc/fahclient/sample-config.xml && \
+    dpkg --install --no-triggers /tmp/fah.deb && rm /tmp/fah.deb
+
+# Setup the unprivileged user to run F@H Client
+RUN addgroup --gid 870 fah && \
+    adduser --uid 870 --gid 870 --gecos "Folding at Home" --disabled-password fah && \
+    usermod -aG video fah
+
+USER fah
+
+# Plant the GPU whitelist file (F@H Client is supposed to automatically
+# download this as needed, but I've seen mixed results depending on such.)
+ADD --chown=fah:fah https://apps.foldingathome.org/GPUs.txt /home/fah/GPUs.txt
+
+WORKDIR /home/fah
 EXPOSE 7396 36330
 
-ENTRYPOINT ["/usr/bin/FAHClient", "--chdir", "/fah"]
+CMD FAHClient

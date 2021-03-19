@@ -1,9 +1,7 @@
   
-FROM ubuntu:18.04
+FROM ubuntu:20.04
 
-ARG AMDGPU_PRO_VERSION=20.40-1147287-ubuntu-18.04
-ARG FAH_CLIENT_VERSION=7.6.9
-ARG FAH_CLIENT_MAJOR_V=7.6
+ARG AMDGPU_PRO_VERSION=20.45-1188099-ubuntu-20.04
 
 ENV DEBIAN_FRONTEND noninteractive
 
@@ -44,8 +42,6 @@ USER fah
 # download this as needed, but I've seen mixed results depending on such.)
 ADD --chown=fah:fah https://apps.foldingathome.org/GPUs.txt /fah/GPUs.txt
 
-WORKDIR "/fah"
-VOLUME ["/fah"]
-EXPOSE 7396 36330
+WORKDIR /fah
 
-ENTRYPOINT ["/usr/bin/FAHClient", "--chdir", "/fah"]
+CMD FAHClient

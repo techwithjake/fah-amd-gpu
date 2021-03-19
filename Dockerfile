@@ -45,5 +45,6 @@ USER fah
 ADD --chown=fah:fah https://apps.foldingathome.org/GPUs.txt /fah/GPUs.txt
 
 WORKDIR /fah
+EXPOSE 7396 36330
 
 CMD FAHClient
